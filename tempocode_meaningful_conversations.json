@@ -1,0 +1,246 @@
+{
+  "project": {
+    "name": "TempoCode",
+    "type": "educational software / coding practice platform",
+    "core_idea": "A learning app inspired by typing trainers like Monkeytype, but focused on programming fluency, program structure, and software modeling.",
+    "audience": [
+      "computer science students",
+      "beginner to intermediate programmers",
+      "learners practicing syntax, control flow, and problem solving"
+    ],
+    "status": "early design / planning"
+  },
+  "meaningful_conversations": [
+    {
+      "topic": "Original product vision",
+      "summary": "TempoCode is imagined as a minimalist practice environment where users respond to programming prompts by writing code or modeling program logic. The experience should feel focused, fast, and encouraging, with lightweight feedback after successful implementation.",
+      "important_decisions": [
+        "The app should not just be a typing game; it should teach coding structure and reasoning.",
+        "The user experience should borrow the clean, minimal feel of Monkeytype.",
+        "Positive feedback should be simple and motivating, similar to a game-like reward loop."
+      ]
+    },
+    {
+      "topic": "Practice modes",
+      "summary": "The project direction settled around multiple modes of abstraction. Instead of only writing code, users could first model logic, then implement it.",
+      "modes": [
+        {
+          "name": "Flow Mode",
+          "description": "Users arrange control-flow shapes or logic blocks in the correct sequence before coding."
+        },
+        {
+          "name": "Implementation Mode",
+          "description": "Users write code that matches the previously modeled flow."
+        },
+        {
+          "name": "Structure / Modeling Mode",
+          "description": "Users practice designing program structure, possibly with UML-style or diagram-based tasks."
+        }
+      ],
+      "important_decisions": [
+        "Flow Mode should connect directly to Implementation Mode.",
+        "The app can store a database of problems that support both diagrams and code answers.",
+        "The platform should help users move between abstraction levels."
+      ]
+    },
+    {
+      "topic": "Problem database",
+      "summary": "TempoCode should maintain a database of coding and modeling problems. Problems may include prompts, expected control-flow structure, solution code, test cases, difficulty, and learning objectives.",
+      "possible_problem_fields": [
+        "id",
+        "title",
+        "prompt",
+        "difficulty",
+        "topic",
+        "mode",
+        "expected_flow",
+        "starter_code",
+        "solution_code",
+        "test_cases",
+        "hints",
+        "tags"
+      ]
+    },
+    {
+      "topic": "Tech stack direction",
+      "summary": "The preferred stack moved toward a modern web application with a React frontend, a Python backend, and PostgreSQL for persistence.",
+      "frontend": {
+        "framework": "React",
+        "tooling": "Vite",
+        "purpose": "Build the user interface for practice modes, problem pages, and feedback displays."
+      },
+      "backend": {
+        "language": "Python",
+        "framework_candidate": "FastAPI",
+        "purpose": "Serve problems, handle submissions, connect to the database, and communicate with AI/LLM services."
+      },
+      "database": {
+        "system": "PostgreSQL",
+        "purpose": "Store users, problems, submissions, attempts, feedback, and possibly embeddings for AI-supported features."
+      }
+    },
+    {
+      "topic": "API approach",
+      "summary": "The system may use both REST APIs and WebSockets. REST is suitable for normal page data, while WebSockets may be useful for live grading, real-time feedback, or interactive practice sessions.",
+      "api_decisions": [
+        {
+          "type": "REST",
+          "best_for": [
+            "loading problem pages",
+            "fetching user progress",
+            "saving submissions",
+            "retrieving problem lists"
+          ]
+        },
+        {
+          "type": "WebSocket",
+          "best_for": [
+            "live grading feedback",
+            "real-time interaction during coding",
+            "streaming AI hints or explanations",
+            "session-based practice"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "PostgreSQL and AI architecture",
+      "summary": "PostgreSQL was discussed as more than a traditional relational database. Extensions such as vector search can support AI-heavy features by storing embeddings for semantic search, recommendation, or similarity matching.",
+      "architecture_takeaways": [
+        "Modern AI apps often combine relational data with vector-style search.",
+        "PostgreSQL can support both normal structured tables and AI-adjacent features through extensions.",
+        "TempoCode could eventually use embeddings to recommend similar problems, search explanations, or compare user submissions conceptually."
+      ]
+    },
+    {
+      "topic": "Initial database schema direction",
+      "summary": "The early schema should support users, coding problems, submissions, attempts, feedback, and progress tracking.",
+      "core_tables": [
+        {
+          "name": "users",
+          "purpose": "Stores account and profile information."
+        },
+        {
+          "name": "problems",
+          "purpose": "Stores coding/modeling prompts and metadata."
+        },
+        {
+          "name": "submissions",
+          "purpose": "Stores user answers, code, diagrams, and timestamps."
+        },
+        {
+          "name": "test_cases",
+          "purpose": "Stores input/output expectations for code problems."
+        },
+        {
+          "name": "feedback",
+          "purpose": "Stores grading results, AI comments, or rule-based feedback."
+        },
+        {
+          "name": "progress",
+          "purpose": "Tracks user skill growth, completed problems, streaks, and mode-specific progress."
+        }
+      ]
+    },
+    {
+      "topic": "Software engineering framing",
+      "summary": "TempoCode is being treated as a real software engineering project rather than just a coding experiment. Tasks are being organized in a Trello board, including code discovery and design research.",
+      "important_practices": [
+        "Use code discovery to learn from existing apps like Monkeytype.",
+        "Break work into manageable project tasks.",
+        "Document architectural decisions early.",
+        "Use diagrams to communicate the system design."
+      ]
+    },
+    {
+      "topic": "Code discovery",
+      "summary": "The user wanted to study how online typing applications and puzzle applications are structured in order to borrow useful design ideas without copying blindly.",
+      "research_targets": [
+        "Monkeytype-style typing interface",
+        "coding challenge platforms",
+        "puzzle/logic sequence applications",
+        "diagramming or modeling interfaces"
+      ],
+      "questions_to_investigate": [
+        "How are practice sessions represented in code?",
+        "How is timing or scoring handled?",
+        "How are problems loaded and rendered?",
+        "How does the UI stay minimal while still being useful?",
+        "How can flow diagrams be stored and compared?"
+      ]
+    }
+  ],
+  "possible_json_schema_for_problems": {
+    "id": "problem_001",
+    "title": "Find the Largest Number",
+    "difficulty": "beginner",
+    "topic": "conditionals",
+    "modes_supported": [
+      "flow",
+      "implementation"
+    ],
+    "prompt": "Write a program that takes two numbers and returns the larger one.",
+    "expected_flow": [
+      "start",
+      "read first number",
+      "read second number",
+      "compare numbers",
+      "return larger number",
+      "end"
+    ],
+    "starter_code": "def largest(a, b):\n    pass",
+    "solution_code": "def largest(a, b):\n    if a > b:\n        return a\n    return b",
+    "test_cases": [
+      {
+        "input": [
+          3,
+          5
+        ],
+        "expected_output": 5
+      },
+      {
+        "input": [
+          10,
+          2
+        ],
+        "expected_output": 10
+      }
+    ],
+    "hints": [
+      "Use an if statement.",
+      "Compare the first number to the second number."
+    ],
+    "tags": [
+      "python",
+      "conditionals",
+      "comparison"
+    ]
+  },
+  "open_questions": [
+    "Should Flow Mode use drag-and-drop shapes, ordered cards, or both?",
+    "Should grading be rule-based first, AI-assisted later, or both from the beginning?",
+    "Should the first version focus only on Python problems?",
+    "Should users log in during the MVP, or should practice work without accounts first?",
+    "How much real-time feedback should WebSockets handle in the first version?"
+  ],
+  "mvp_recommendation": {
+    "version": "MVP 1",
+    "goal": "Build a small working version before adding heavy AI features.",
+    "recommended_scope": [
+      "React problem page",
+      "PostgreSQL problem table",
+      "FastAPI endpoint to fetch problems",
+      "basic submission endpoint",
+      "simple rule-based grading for a few Python problems",
+      "Flow Mode prototype using ordered steps/cards"
+    ],
+    "defer_until_later": [
+      "full AI grading",
+      "vector embeddings",
+      "advanced user analytics",
+      "large problem library",
+      "complex diagram comparison"
+    ]
+  },
+  "created_on": "2026-04-27"
+}
