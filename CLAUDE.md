@@ -31,7 +31,7 @@ Flow Mode and Implementation Mode are directly connected — one feeds into the 
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Frontend | React + Vite | Minimal, fast UI for practice modes, problem pages, and feedback |
+| Frontend | SolidJS + Vite | Minimal, fast UI for practice modes, problem pages, and feedback |
 | Backend | Python + FastAPI | Serves problems, handles submissions, connects to DB and AI services |
 | Database | PostgreSQL | Core relational data + potential vector extension for AI features later |
 | Real-time | WebSockets | Live grading feedback, streaming AI hints, session-based practice |
@@ -201,10 +201,10 @@ Claude is acting as a **development assistant and software architecture mentor**
   DROP TYPE IF EXISTS phase CASCADE;
   DROP TYPE IF EXISTS difficulty CASCADE;
   ```
-- Frontend folder structure is scaffolded. React app still needs to be moved from `Desktop\my-react-app` into `frontend/`.
+- Frontend is initialized with SolidJS + Vite. `package.json`, `vite.config.js`, `index.html`, `src/index.jsx`, and `src/App.jsx` are in place. `npm install` has been run.
 - `.env` file needs to be created from `.env.example` with the correct DB password.
 - GitHub repo exists at https://github.com/Judah-Whiddon/Tempo-Code — nothing pushed yet.
 - Assignment 3 is due tonight (April 30, 11:59pm). Diagrams are done. Project Management PDF still needs to be written.
 - Switching from Cowork mode to **Claude Code** for active development. Pick up from here.
 
-*Last updated: 2026-04-29*
+*Last updated: 2026-05-01*
