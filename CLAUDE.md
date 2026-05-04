@@ -5,7 +5,7 @@
 TempoCode is a minimalist coding practice platform inspired by Monkeytype, but focused on **programming fluency, program structure, and software modeling** — not typing speed. Users practice both *modeling* program logic and *implementing* it in code.
 
 **Target audience:** CS students and beginner-to-intermediate programmers.
-**Current status:** Early design and planning phase.
+**Current status:** MVP complete. Sprint 2 in planning — step-level greening for Implementation Mode.
 
 ---
 
@@ -99,9 +99,9 @@ Three problem types accessible from a **Problem Type Selection window** before a
 
 ### Type 2 — Debugging
 - Broken code presented in editor as `starter_code`.
-- Combination of syntax errors and semantic errors (Python gotchas: mutable default arguments, `is` vs `==`, late binding closures, integer vs float division).
+- **Scope:** bugs that explicitly raise an exception when executed (`IndexError`, `TypeError`, `KeyError`, `AttributeError`, `NameError`, `ZeroDivisionError`, off-by-ones that crash, etc.).
 - User fixes code in editor → test runner grades → pass/fail verdict.
-- Semantic bugs are exposed via specifically authored failing test cases — no AI needed.
+- **Out of scope:** semantic gotchas (mutable defaults, late-binding closures, `is` vs `==`, integer/float division surprises). The grader runs each test case in a fresh subprocess, so state-dependent bugs never manifest under it. Those problems belong in Mock Interview (Type 3, AI-graded) instead.
 - Same grading pipeline as Implementation Mode. No new infrastructure.
 
 ### Type 3 — Mock Interview
@@ -192,19 +192,150 @@ Claude is acting as a **development assistant and software architecture mentor**
 ## Session Handoff Notes
 
 - All architecture decisions, problem types, grading layer, and class structure are finalized — see sections above.
-- Backend scaffold is complete: FastAPI app, SQLAlchemy models, grader service, Pydantic schemas, DB connection.
-- Database schema has been run against PostgreSQL 18 on localhost:5432. The `tempocode` database exists. The old `users` table (integer id) needs to be dropped and recreated with UUID — run the DROP commands below before re-running schema.sql:
-  ```sql
-  DROP TABLE IF EXISTS users CASCADE;
-  DROP TYPE IF EXISTS problem_type CASCADE;
-  DROP TYPE IF EXISTS step_type CASCADE;
-  DROP TYPE IF EXISTS phase CASCADE;
-  DROP TYPE IF EXISTS difficulty CASCADE;
-  ```
-- Frontend is initialized with SolidJS + Vite. `package.json`, `vite.config.js`, `index.html`, `src/index.jsx`, and `src/App.jsx` are in place. `npm install` has been run.
-- `.env` file needs to be created from `.env.example` with the correct DB password.
+- Backend is **fully scaffolded, seeded, and verified end-to-end**: FastAPI app, SQLAlchemy models, grader service (flow comparison, subprocess code runner, AI mock interview), Pydantic schemas, DB connection, routes for `/problems` and `/submissions`.
+- Database schema is live on PostgreSQL 18 (localhost:5432, db `tempocode`). The integer-keyed `users` table has been dropped and re-created with UUID. `database/teardown.sql` is the canonical reset script — run it then re-apply `database/schema.sql` if you need a clean slate.
+- `backend/seed.py` inserts a placeholder user + Two Sum (FLOW_IMPL) + Find Max — Off By One (DEBUGGING). Idempotent — safe to re-run.
+- Backend Python venv lives at `backend/.venv` (deps installed from `requirements.txt`). Run the API via `& .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000` from `backend/`.
+- Frontend is built with SolidJS + Vite. Run via `npm run dev` from `frontend/` (Vite serves on :3000; CORS is configured for that origin). Routes: `/` (problem-type select) and `/problem/:id`. API client is `frontend/src/api.js`.
+- Frontend file layout: `src/pages/` (`ProblemTypeSelect.jsx`, `ProblemPage.jsx`, `FlowImplWorkspace.jsx`); `src/components/` (`FlowCanvas.jsx`, `ImplementationPanel.jsx`); empty scaffold dirs `CodeEditor/`, `Feedback/`, `FlowCanvas/`, `ProblemTypeSelector/` are leftovers — safe to delete.
+- `.env` is set with the correct DB password. `ANTHROPIC_API_KEY` is still a placeholder; only Mock Interview needs it (deferred from MVP).
+- **Resolved:** the Windows `python3` PATH bug in `grader.py` is fixed — line 129 now uses `[sys.executable, tmp_path]`, so IMPLEMENTATION and DEBUGGING grading work on Windows.
 - GitHub repo exists at https://github.com/Judah-Whiddon/Tempo-Code — nothing pushed yet.
-- Assignment 3 is due tonight (April 30, 11:59pm). Diagrams are done. Project Management PDF still needs to be written.
-- Switching from Cowork mode to **Claude Code** for active development. Pick up from here.
+- Assignment 3 PDF (`TempoCode_Project_Management.pdf`) is complete and in the project root.
+- **Sprint 2 provider decision:** Step-level greening uses **Groq + Llama 3.3 70B Versatile** (`llama-3.3-70b-versatile`). Initially started on `llama-3.1-8b-instant` but the 8B model reliably missed conditional-branch return steps and ignored explicit "no empty bodies" instructions; bumped to 70B during Phase 7 testing and it greens correctly across partial / mid / full code states. Groq's API is OpenAI-compatible, free tier, and fast enough for interactive use. `GROQ_API_KEY` is live and rotated in `.env`. Env vars: `STEP_GRADER_BASE_URL=https://api.groq.com/openai/v1`, `STEP_GRADER_MODEL=llama-3.3-70b-versatile`. Provider/model are intentionally env-configurable so switching to Ollama (local) or Anthropic later is a one-line change.
 
-*Last updated: 2026-05-01*
+*Last updated: 2026-05-04 (Sprint 2 Phases 6 + 7 complete — step greening live end-to-end on Llama 3.3 70B)*
+
+---
+
+## MVP Sprint Plan
+
+All five phases of the MVP sprint are complete. The platform supports the two core problem types (Flow+Implementation and Debugging) end-to-end against real data. Mock Interview UI remains deferred per the original scope.
+
+### Phase 1 — Backend verification + seed data ✅ DONE (2026-05-02)
+**Goal:** Confirm the backend runs end-to-end against real data before touching the frontend.
+
+- [x] DB teardown + `schema.sql` re-applied (`database/teardown.sql` is the reset script)
+- [x] `backend/seed.py` inserts placeholder user + Two Sum (FLOW_IMPL) + Find Max — Off By One (DEBUGGING)
+- [x] FastAPI boots; verified `GET /health`, `GET /problems`, `POST /submissions` (correct flow → `pass`, shuffled flow → `fail` with `greened_steps` and hint)
+
+**Source patches needed during verification (small, deliberate fixes):**
+- `models.py` — added `values_callable` to `Difficulty` enum column (Postgres enum stores lowercase values; SAEnum was sending uppercase member names)
+- `submissions.py` — explicit `attempts=0` (and the other booleans) in the new-`Progress` constructor (Python-side defaults don't fire before the first `+= 1`)
+- `grader.py:129` — replaced `["python3", tmp_path]` with `[sys.executable, tmp_path]` so subprocess grading works on Windows where `python3` is not on PATH
+
+### Phase 2 — Frontend skeleton + API layer ✅ DONE (2026-05-03)
+**Goal:** Routing and API plumbing before any UI components.
+
+- [x] `frontend/src/api.js` — thin wrappers: `getProblems(type?)`, `getProblem(id)`, `submitAnswer(payload)`. Trailing slashes on collection routes match FastAPI's APIRouter prefixes (without them FastAPI 307s and the browser drops POST bodies).
+- [x] SolidJS routing (`@solidjs/router`) wired in `App.jsx` with `/` and `/problem/:id`.
+- [x] **Problem Type Selection screen** (`pages/ProblemTypeSelect.jsx`) — three cards (Flow+Impl, Debugging, Mock Interview). Clicking fetches `getProblems(type)` and navigates to the first match.
+
+### Phase 3 — Flow Mode UI ✅ DONE (2026-05-03)
+**Goal:** Reorderable FlowStep cards, submit flow arrangement, green on pass.
+
+- [x] Shuffled `flow_steps` rendered as cards in `components/FlowCanvas.jsx` with ↑/↓ reorder controls (MVP swap; drag-and-drop deferred).
+- [x] Submit → `POST /submissions` with `{ phase: "FLOW", content: [ordered labels] }`.
+- [x] On `verdict: pass`: cards green, ~900 ms celebration delay, then handoff to Implementation panel.
+- [x] On `verdict: fail`: surface `greened_steps` (correctly placed cards stay green) + grader hint.
+
+### Phase 4 — Implementation Mode UI ✅ DONE (2026-05-03)
+**Goal:** Code editor, submit code, pass/fail with hint.
+
+- [x] Plain `<textarea>` editor in `components/ImplementationPanel.jsx` (CodeMirror deferred per the "or a plain `<textarea>` for pure MVP" allowance).
+- [x] Phase orchestrator `pages/FlowImplWorkspace.jsx` swaps from `FlowCanvas` to `ImplementationPanel` on flow pass. (Note: spec called for "minimize to corner" — current behavior shows the greened flow as a sidebar list inside the impl panel. Functional, not the spec'd corner-dock animation. Acceptable for MVP; revisit if polish budget allows.)
+- [x] Submit → `POST /submissions` with `{ phase: "IMPLEMENTATION", content: { code } }`.
+- [x] Verdict display: pass → green editor + success line; fail → hint string from grader.
+
+### Phase 5 — Debugging Mode UI ✅ DONE (2026-05-03)
+**Goal:** Reuse the Implementation editor, pre-fill broken code.
+
+- [x] `ImplementationPanel` accepts a `phase` prop (`"IMPLEMENTATION"` | `"DEBUGGING"`) and swaps headers/copy accordingly. `props.problem.starter_code ?? DEFAULT_STARTER` preloads the broken code.
+- [x] `pages/ProblemPage.jsx` renders `<ImplementationPanel problem={problem()} phase="DEBUGGING" />` for `DEBUGGING`-type problems — no new backend or component needed.
+- [x] Backend already routes `Phase.DEBUGGING` through the same code grader as `IMPLEMENTATION` (`grader.py:40`, `submissions.py:79`).
+- [x] Pass/fail verdict display reuses the Implementation panel's verdict UI.
+
+### Deferred (not in MVP)
+- Authentication (placeholder user `00000000-0000-0000-0000-000000000001` is hardcoded in submissions.py — fine for now)
+- Mock Interview UI (backend is ready; add this last)
+- WebSockets
+- Styling beyond functional
+- Additional problems / problem library
+- "Minimize flow canvas to corner" polish on the FLOW → IMPLEMENTATION handoff
+- CodeMirror in place of `<textarea>`
+- Re-author the late-binding-closure / mutable-default gotcha as a Mock Interview prompt once the MI UI lands. It was removed from Debugging on 2026-05-03 because the per-test subprocess isolation hid the bug; it's a strong candidate for AI-graded explanation-style evaluation.
+
+---
+
+## Sprint 2 — Step-Level Greening for Implementation Mode ✅ DONE (2026-05-04)
+
+Sprint 2 is closed as demoable. Phases 6 and 7 shipped — step-level greening is live end-to-end on Llama 3.3 70B via Groq. Phase 8 (label tuning) was scoped out as a polish pass and intentionally not done; the only known artefact is the empty-`for`-loop body being credited as "Loop through each number with its index", which is a label-sharpness issue, not a functional one.
+
+**Goal:** Replace the current all-or-nothing Implementation verdict with incremental step-by-step greening. Each FlowStep greens as the user implements it, giving continuous positive reinforcement rather than a single pass/fail at the end.
+
+**Design decision:** Use AI (Groq + Llama 3.1 8B) as the step detector, not the final verdict. The final correctness verdict (did all tests pass?) stays rule-based. AI's only job is to classify which FlowSteps the current code covers. This keeps the separation of concerns intact and limits AI to a role it's well-suited for — semantic classification, not execution.
+
+**Greening rules:**
+- Greening is additive and one-directional. Once a step greens, it stays green for the session.
+- AI step detection runs on "Run" button press, not on every keystroke (avoid latency/cost per keystroke).
+- Final pass/fail verdict is still determined by the test runner (rule-based), same as today.
+- If the AI call fails (network error, rate limit), fail silently — show a neutral state and let the test runner verdict still work normally.
+
+---
+
+### Phase 6 — AI Step Detection Endpoint (Backend) ✅ DONE (2026-05-04)
+
+**Goal:** Add a `/grade/steps` endpoint that accepts the user's current code + problem ID and returns which FlowSteps are complete.
+
+- [x] `GROQ_API_KEY` live and rotated in `.env`. `STEP_GRADER_BASE_URL` and `STEP_GRADER_MODEL` added. Provider is env-configurable.
+- [x] Added `grade_steps(code, flow_steps) -> list[str]` to `grader.py`. Uses `openai.OpenAI` pointed at `STEP_GRADER_BASE_URL` with `GROQ_API_KEY`, `temperature=0`, `response_format={"type": "json_object"}`. Filters returned labels against the input list (defends against hallucinated labels). New `StepGraderError` exception covers missing config, transport failure, and malformed JSON.
+- [x] New `backend/app/routes/grading.py` with `POST /grade/steps`. 503 with `{detail: "ai_unavailable"}` on `StepGraderError`. Registered in `main.py`.
+- [x] `openai==1.59.9` added to `requirements.txt` and installed. (Pinned to 1.59.9 specifically: 1.54.0 passes a deprecated `proxies=` kwarg to httpx 0.28, which crashes at `OpenAI()` construction. 1.55.3+ removed it. If you ever bump httpx, keep openai ≥1.55.3.)
+- [x] Manual test against Two Sum (`1b2134ad-29dd-489b-ad12-fad23def9498`):
+  - Empty code → 0 steps greened (correct).
+  - Partial (hashmap init + empty loop body) → 1 step greened: hashmap init only. Llama 3.1 8B is correctly strict — empty loop body doesn't credit the loop step.
+  - Full solution → 4/5 greened. The "If complement is in the hashmap, return both indices" label was missed despite the code containing that exact return. Symptom of label/code-language mismatch — Phase 8 territory.
+
+---
+
+### Phase 7 — Step Greening UI (Frontend) ✅ DONE (2026-05-04)
+
+**Goal:** Update `ImplementationPanel` to call `/grade/steps` on Run and green completed steps in the sidebar flow list.
+
+- [x] Added `gradeSteps(problemId, code)` to `frontend/src/api.js`.
+- [x] Extended `ImplementationPanel.jsx`:
+  - `greenedSteps` is a `createSignal(new Set())`. **Deviation from the original spec line "Initialized from the flow steps that were greened during Flow Mode":** since flow is all-or-nothing, pre-populating from `flowOrder` would start the impl sidebar fully green and make AI greening invisible. Initializing empty preserves the intended progressive-feedback UX. The `flowOrder` prop is still used to enumerate which labels to render in the sidebar.
+  - On Submit: `gradeSteps()` and `submitAnswer()` fire via `Promise.all`. AI failures are swallowed (`.catch(() => null)`); the test runner verdict path is unaffected.
+  - Newly completed steps are merged into `greenedSteps` additively (never removed).
+  - Sidebar header changed from "Your greened flow" → "Flow steps". Each `<li>` gets a `.greened` class when its label is in `greenedSteps`.
+- [x] Final verdict still driven by the test runner; AI is detector-only.
+- [x] CSS: added `.flow-summary li` muted default + `.flow-summary li.greened` accent color (incl. `::marker`).
+- [x] Browser-tested end-to-end on Two Sum.
+
+**Two findings from real testing — addressed before sign-off:**
+
+1. **Llama 3.1 8B was reliably missing step 4** ("If complement is in the hashmap, return both indices") even on a perfect solution. Tried softening the system prompt with an explicit example crediting conditional-branch returns; **didn't fix the miss** and made the partial case slightly worse (started crediting an empty `for` loop). Diagnosis: capability ceiling, not prompt.
+2. **Swapped to `llama-3.3-70b-versatile`** (still on Groq, still free tier — one-line `.env` change). Result: full Two Sum greens **5/5**, mid-state (hashmap + loop + complement, no return) greens **3/5** — proper progressive signal. The empty-loop case still credits "Loop through each number with its index" — judgment call (the loop *is* there); fixable in Phase 8 by sharpening the label if undesired.
+
+The softened system prompt was kept (it doesn't hurt 70B and adds an example for future tuning).
+
+---
+
+### Phase 8 — Seed Data: Intermediate Test Alignment ⏸ DEFERRED
+
+**Goal:** Ensure Two Sum's `flow_steps` labels match the language the AI will naturally use when reading code. If labels are vague, the AI may misclassify.
+
+- [ ] Review Two Sum `flow_steps` labels in `seed.py` against how Claude describes partial implementations.
+- [ ] Adjust labels to be concrete and code-descriptive (e.g., "Initialize seen = {} hash map" instead of "Set up storage").
+- [ ] Re-seed and re-test step detection with updated labels.
+- [ ] Document the label convention in this file so future problems follow the same pattern.
+
+**Status:** intentionally deferred. With Llama 3.3 70B the only undesirable behavior we observed is "empty `for` loop body credited as the Loop step." Tightening that label (e.g. "Loop body iterates each number and processes it") would fix it but isn't blocking demo. Pick this up if/when adding the third+ problem.
+
+---
+
+### Deferred from Sprint 2
+- WebSocket streaming for token-by-token step greening (REST + polling is sufficient for now).
+- Rate limiting on `/grade/steps` (add when multiple users are active).
+- Per-step hint generation (AI currently classifies steps; generating targeted hints per incomplete step is a separate prompt and a separate feature).
+- CodeMirror editor (still deferred — `<textarea>` is fine through demo).

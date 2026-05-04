@@ -62,8 +62,11 @@ def submit(payload: SubmissionIn, db: Session = Depends(get_db)):
 
     if not progress:
         progress = Progress(
-            user_id    = PLACEHOLDER_USER_ID,
-            problem_id = payload.problem_id,
+            user_id        = PLACEHOLDER_USER_ID,
+            problem_id     = payload.problem_id,
+            flow_completed = False,
+            impl_unlocked  = False,
+            attempts       = 0,
         )
         db.add(progress)
 

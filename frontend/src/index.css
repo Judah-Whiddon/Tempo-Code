@@ -1,0 +1,259 @@
+/* TempoCode — minimal, functional. Real visual design comes after MVP. */
+
+:root {
+  --bg: #0f1115;
+  --fg: #e7e9ee;
+  --muted: #9aa0a6;
+  --accent: #6cf08c;
+  --card: #181b22;
+  --card-hover: #21252e;
+  --border: #2a2f3a;
+  --error: #ff6b6b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+.hero { text-align: center; margin-bottom: 3rem; }
+.hero h1 { font-size: 3rem; margin: 0; letter-spacing: -0.02em; }
+.tagline { color: var(--muted); margin-top: 0.5rem; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.type-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.type-card:hover:not(:disabled) {
+  background: var(--card-hover);
+  border-color: var(--accent);
+}
+.type-card:disabled { cursor: progress; opacity: 0.6; }
+.type-card h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.type-card p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+.loading { display: block; margin-top: 0.75rem; color: var(--muted); font-size: 0.85rem; }
+.error { color: var(--error); margin-top: 1.5rem; }
+
+.back { margin-bottom: 1.5rem; }
+.problem h1 { margin: 0 0 0.5rem; }
+.meta { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.pill {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.pill.subtle { opacity: 0.75; }
+.prompt { line-height: 1.55; color: var(--fg); }
+
+.section { margin-top: 2rem; }
+.section h2 { font-size: 1rem; color: var(--muted); margin-bottom: 0.5rem; }
+.section ol, .section ul { padding-left: 1.25rem; line-height: 1.6; }
+
+pre {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+
+.footnote { margin-top: 3rem; color: var(--muted); font-size: 0.8rem; }
+
+/* ── Flow phase ─────────────────────────────────────────────────────────── */
+
+.problem-header { margin-bottom: 2rem; }
+
+.phase-header { margin-bottom: 1rem; }
+.phase-header h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.phase-header .hint { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+.flow-canvas, .impl-panel { margin-top: 2rem; }
+
+.flow-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.flow-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  transition: background 0.15s, border-color 0.25s, transform 0.15s;
+}
+.flow-card.greened {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+.flow-card.missed {
+  border-left-color: var(--error);
+}
+
+.step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.flow-card.greened .step-index { color: var(--accent); }
+
+.step-label { line-height: 1.4; }
+
+.step-controls { display: flex; gap: 0.25rem; }
+.step-controls button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 1rem;
+}
+.step-controls button:hover:not(:disabled) {
+  background: var(--card-hover);
+  border-color: var(--accent);
+}
+.step-controls button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.actions { display: flex; gap: 0.75rem; align-items: center; }
+
+button.primary {
+  background: var(--accent);
+  color: #0a1d12;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.6rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary:hover:not(:disabled) { filter: brightness(1.05); }
+button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+}
+button.ghost:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
+button.ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.feedback-line { margin-top: 1rem; color: var(--muted); }
+
+/* ── Implementation phase ────────────────────────────────────────────────── */
+
+.flow-summary {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.flow-summary h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.flow-summary ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--fg);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.flow-summary li {
+  color: var(--muted);
+  transition: color 0.25s;
+}
+.flow-summary li.greened {
+  color: var(--accent);
+}
+.flow-summary li.greened::marker {
+  color: var(--accent);
+}
+
+/* ── Code editor ─────────────────────────────────────────────────────────── */
+
+.code-editor {
+  width: 100%;
+  min-height: 280px;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  tab-size: 4;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.code-editor:focus { border-color: var(--accent); }
+.code-editor.greened { border-left-color: var(--accent); }
+.code-editor.missed { border-left-color: var(--error); }
+.code-editor:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.success {
+  margin-top: 1rem;
+  color: var(--accent);
+  font-weight: 600;
+}

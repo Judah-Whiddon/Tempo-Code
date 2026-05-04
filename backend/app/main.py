@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import problems, submissions
+from app.routes import problems, submissions, grading
 
 app = FastAPI(
     title="TempoCode API",
@@ -22,6 +22,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(problems.router)
 app.include_router(submissions.router)
+app.include_router(grading.router)
 
 # ── Health Check ──────────────────────────────────────────────────────────────
 @app.get("/health")

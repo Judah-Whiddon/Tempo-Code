@@ -1,8 +1,13 @@
+import { Router, Route } from "@solidjs/router";
+import ProblemTypeSelect from "./pages/ProblemTypeSelect";
+import ProblemPage from "./pages/ProblemPage";
+
 function App() {
   return (
-    <div>
-      <h1>TempoCode</h1>
-    </div>
+    <Router>
+      <Route path="/" component={ProblemTypeSelect} />
+      <Route path="/problem/:id" component={ProblemPage} />
+    </Router>
   );
 }
 
