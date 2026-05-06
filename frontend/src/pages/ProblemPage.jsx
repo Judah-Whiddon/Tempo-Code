@@ -3,6 +3,7 @@ import { useParams, A } from "@solidjs/router";
 import { getProblem } from "../api";
 import FlowImplWorkspace from "./FlowImplWorkspace";
 import ImplementationPanel from "../components/ImplementationPanel";
+import MockInterviewPanel from "../components/MockInterviewPanel";
 
 function ProblemPage() {
   const params = useParams();
@@ -41,7 +42,7 @@ function ProblemPage() {
           <ImplementationPanel problem={problem()} phase="DEBUGGING" />
         </Show>
         <Show when={problem().type === "MOCK_INTERVIEW"}>
-          <p class="footnote">Mock Interview UI is deferred from MVP.</p>
+          <MockInterviewPanel problem={problem()} />
         </Show>
       </Show>
     </main>

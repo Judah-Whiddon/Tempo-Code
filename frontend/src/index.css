@@ -257,3 +257,59 @@ button.ghost:disabled { opacity: 0.45; cursor: not-allowed; }
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ── Mock Interview ──────────────────────────────────────────────────────── */
+
+.mock-panel { margin-top: 2rem; }
+
+.mock-panel .code-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0 0 1.25rem;
+}
+
+.response-area {
+  width: 100%;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+  margin-bottom: 1rem;
+}
+.response-area:focus { border-color: var(--accent); }
+.response-area:disabled { opacity: 0.85; cursor: not-allowed; }
+
+.ai-explanation {
+  margin-top: 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+}
+.ai-explanation h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.ai-explanation p {
+  margin: 0;
+  line-height: 1.55;
+}

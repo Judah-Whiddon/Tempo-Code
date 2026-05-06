@@ -148,12 +148,16 @@ def _grade_mock_interview(problem: Problem, submission: Submission):
     Send the user's text response + the code block to an LLM.
     Returns AI verdict and explanation.
     MVP: one demo problem only.
-    """
-    import os
-    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-    if not api_key:
-        return "fail", None, "AI grader not configured. Set ANTHROPIC_API_KEY in .env.", None
+    Provider: Groq (OpenAI-compatible) using STEP_GRADER_* env vars — same
+    model the step grader uses, so the project stays on a single provider.
+    """
+    api_key  = os.getenv("GROQ_API_KEY")
+    base_url = os.getenv("STEP_GRADER_BASE_URL")
+    model    = os.getenv("STEP_GRADER_MODEL")
+
+    if not api_key or not base_url or not model:
+        return "fail", None, "AI grader not configured. Set GROQ_API_KEY / STEP_GRADER_BASE_URL / STEP_GRADER_MODEL in .env.", None
 
     content = submission.content
     user_response = content.get("response", "") if isinstance(content, dict) else str(content)
@@ -164,43 +168,54 @@ def _grade_mock_interview(problem: Problem, submission: Submission):
             code_block=code_block,
             user_response=user_response,
             api_key=api_key,
+            base_url=base_url,
+            model=model,
         )
         return verdict_text, None, explanation, None
     except Exception as e:
         return "fail", None, f"AI grader error: {str(e)}", None
 
 
-def _call_llm(code_block: str, user_response: str, api_key: str):
-    """Call Anthropic Claude API to evaluate a mock interview response."""
-    import anthropic
+def _call_llm(code_block: str, user_response: str, api_key: str, base_url: str, model: str):
+    """Evaluate a mock interview response via an OpenAI-compatible LLM (Groq)."""
+    from openai import OpenAI
 
-    client = anthropic.Anthropic(api_key=api_key)
-    prompt = f"""You are evaluating a mock coding interview response.
+    client = OpenAI(api_key=api_key, base_url=base_url)
 
-Code block shown to the candidate:
-```python
-{code_block}
-```
-
-Candidate's response:
-{user_response}
-
-Evaluate whether the candidate correctly identified what this code does,
-how it is structured, and any notable patterns or issues.
-
-Respond in this exact format:
-VERDICT: pass OR fail
-EXPLANATION: (2-3 sentences explaining why)"""
-
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=256,
-        messages=[{"role": "user", "content": prompt}]
+    system_prompt = (
+        "You are evaluating a mock coding interview response. Be a fair but "
+        "rigorous interviewer: pass the candidate if they correctly identify "
+        "what the code does AND surface the key behavior or pitfall. Fail "
+        "them if they miss the central concept or describe the code "
+        "incorrectly.\n\n"
+        "Respond in this exact format and nothing else:\n"
+        "VERDICT: pass\n"
+        "EXPLANATION: <2-3 sentences>\n\n"
+        "(Use 'fail' instead of 'pass' if the response misses the mark.)"
     )
 
-    response_text = message.content[0].text
+    user_prompt = (
+        f"Code block shown to the candidate:\n```python\n{code_block}\n```\n\n"
+        f"Candidate's response:\n{user_response}"
+    )
+
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        temperature=0,
+        max_tokens=300,
+    )
+
+    response_text = completion.choices[0].message.content or ""
     verdict = "pass" if "VERDICT: pass" in response_text else "fail"
-    explanation = response_text.split("EXPLANATION:")[-1].strip() if "EXPLANATION:" in response_text else response_text
+    explanation = (
+        response_text.split("EXPLANATION:", 1)[-1].strip()
+        if "EXPLANATION:" in response_text
+        else response_text.strip()
+    )
 
     return verdict, explanation
 

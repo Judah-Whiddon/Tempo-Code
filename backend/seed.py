@@ -85,6 +85,30 @@ DEBUG_TESTS = [
 ]
 
 
+# ── Mock Interview: late-binding closure gotcha ────────────────────────────────
+# Classic Python interview question. Per-test subprocess isolation in the rule
+# grader hides this bug, so it lives here as an explanation-style prompt the AI
+# can grade on understanding rather than execution.
+MOCK_CODE = """\
+def make_multipliers():
+    funcs = []
+    for i in range(3):
+        funcs.append(lambda x: x * i)
+    return funcs
+
+multipliers = make_multipliers()
+print(multipliers[0](5))
+print(multipliers[1](5))
+print(multipliers[2](5))
+"""
+
+MOCK_PROMPT = (
+    "Read the code carefully. What does this script print when you run it, "
+    "and why does each lambda behave that way? Walk through what `i` "
+    "actually refers to inside the lambda when each function is called."
+)
+
+
 # ── Seed routine ──────────────────────────────────────────────────────────────
 
 def seed():
@@ -165,12 +189,26 @@ def seed():
                 is_semantic     = False,
             ))
 
+        # ── Mock Interview ──
+        mock = Problem(
+            title         = "Lambdas in a Loop",
+            prompt        = MOCK_PROMPT,
+            difficulty    = Difficulty.INTERMEDIATE,
+            topic         = "closures-scoping",
+            type          = ProblemType.MOCK_INTERVIEW,
+            starter_code  = MOCK_CODE,
+            tags          = ["python", "closures", "late-binding", "gotcha"],
+        )
+        db.add(mock)
+        db.flush()
+
         db.commit()
 
         print("Seed complete.")
         print(f"  user.id     = {user.id}")
         print(f"  two_sum.id  = {two_sum.id}")
         print(f"  debug.id    = {debug.id}")
+        print(f"  mock.id     = {mock.id}")
     except Exception:
         db.rollback()
         raise
