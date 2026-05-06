@@ -12,6 +12,7 @@ Grading paths:
 """
 
 import subprocess
+import sys
 import tempfile
 import os
 import json
@@ -125,7 +126,7 @@ except Exception as e:
             tmp_path = f.name
 
         proc = subprocess.run(
-            ["python3", tmp_path],
+            [sys.executable, tmp_path],
             capture_output=True, text=True, timeout=5
         )
         os.unlink(tmp_path)
@@ -147,12 +148,16 @@ def _grade_mock_interview(problem: Problem, submission: Submission):
     Send the user's text response + the code block to an LLM.
     Returns AI verdict and explanation.
     MVP: one demo problem only.
-    """
-    import os
-    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-    if not api_key:
-        return "fail", None, "AI grader not configured. Set ANTHROPIC_API_KEY in .env.", None
+    Provider: Groq (OpenAI-compatible) using STEP_GRADER_* env vars — same
+    model the step grader uses, so the project stays on a single provider.
+    """
+    api_key  = os.getenv("GROQ_API_KEY")
+    base_url = os.getenv("STEP_GRADER_BASE_URL")
+    model    = os.getenv("STEP_GRADER_MODEL")
+
+    if not api_key or not base_url or not model:
+        return "fail", None, "AI grader not configured. Set GROQ_API_KEY / STEP_GRADER_BASE_URL / STEP_GRADER_MODEL in .env.", None
 
     content = submission.content
     user_response = content.get("response", "") if isinstance(content, dict) else str(content)
@@ -163,42 +168,143 @@ def _grade_mock_interview(problem: Problem, submission: Submission):
             code_block=code_block,
             user_response=user_response,
             api_key=api_key,
+            base_url=base_url,
+            model=model,
         )
         return verdict_text, None, explanation, None
     except Exception as e:
         return "fail", None, f"AI grader error: {str(e)}", None
 
 
-def _call_llm(code_block: str, user_response: str, api_key: str):
-    """Call Anthropic Claude API to evaluate a mock interview response."""
-    import anthropic
+def _call_llm(code_block: str, user_response: str, api_key: str, base_url: str, model: str):
+    """Evaluate a mock interview response via an OpenAI-compatible LLM (Groq)."""
+    from openai import OpenAI
 
-    client = anthropic.Anthropic(api_key=api_key)
-    prompt = f"""You are evaluating a mock coding interview response.
+    client = OpenAI(api_key=api_key, base_url=base_url)
 
-Code block shown to the candidate:
-```python
-{code_block}
-```
-
-Candidate's response:
-{user_response}
-
-Evaluate whether the candidate correctly identified what this code does,
-how it is structured, and any notable patterns or issues.
-
-Respond in this exact format:
-VERDICT: pass OR fail
-EXPLANATION: (2-3 sentences explaining why)"""
-
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=256,
-        messages=[{"role": "user", "content": prompt}]
+    system_prompt = (
+        "You are evaluating a mock coding interview response. Be a fair but "
+        "rigorous interviewer: pass the candidate if they correctly identify "
+        "what the code does AND surface the key behavior or pitfall. Fail "
+        "them if they miss the central concept or describe the code "
+        "incorrectly.\n\n"
+        "Respond in this exact format and nothing else:\n"
+        "VERDICT: pass\n"
+        "EXPLANATION: <2-3 sentences>\n\n"
+        "(Use 'fail' instead of 'pass' if the response misses the mark.)"
     )
 
-    response_text = message.content[0].text
+    user_prompt = (
+        f"Code block shown to the candidate:\n```python\n{code_block}\n```\n\n"
+        f"Candidate's response:\n{user_response}"
+    )
+
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        temperature=0,
+        max_tokens=300,
+    )
+
+    response_text = completion.choices[0].message.content or ""
     verdict = "pass" if "VERDICT: pass" in response_text else "fail"
-    explanation = response_text.split("EXPLANATION:")[-1].strip() if "EXPLANATION:" in response_text else response_text
+    explanation = (
+        response_text.split("EXPLANATION:", 1)[-1].strip()
+        if "EXPLANATION:" in response_text
+        else response_text.strip()
+    )
 
     return verdict, explanation
+
+
+# ── Step-Level Greening (Sprint 2) ────────────────────────────────────────────
+
+class StepGraderError(Exception):
+    """Raised when the step-detection LLM call or response parsing fails."""
+
+
+def grade_steps(code: str, flow_steps: list[str]) -> list[str]:
+    """
+    Classify which FlowStep labels the user's current code already covers.
+
+    Uses an OpenAI-compatible client pointed at STEP_GRADER_BASE_URL (Groq by
+    default) with STEP_GRADER_MODEL. The model is instructed to return JSON of
+    the form {"completed_steps": [<labels>]}. Only labels present in the input
+    flow_steps are returned; anything else is filtered out.
+
+    Raises StepGraderError on missing config, transport failure, or malformed
+    JSON. Callers should treat this as soft-fail (return 503; UI ignores).
+    """
+    api_key  = os.getenv("GROQ_API_KEY")
+    base_url = os.getenv("STEP_GRADER_BASE_URL")
+    model    = os.getenv("STEP_GRADER_MODEL")
+
+    if not api_key or not base_url or not model:
+        raise StepGraderError("Step grader not configured (GROQ_API_KEY / STEP_GRADER_BASE_URL / STEP_GRADER_MODEL missing).")
+
+    if not flow_steps:
+        return []
+
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        raise StepGraderError(f"openai package not installed: {e}")
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    system_prompt = (
+        "You classify which implementation steps a Python snippet has "
+        "accomplished. You receive an ordered list of step labels and the "
+        "candidate's current code.\n\n"
+        "Rules for crediting a step:\n"
+        "- Credit a step if the code clearly performs the action described, "
+        "  even if it's inside a conditional branch or only one path of an "
+        "  if/else. A real `return [seen[c], i]` inside `if complement in "
+        "  seen:` counts as 'return both indices'.\n"
+        "- Do NOT credit a step that is only stubbed (e.g. `pass`, an empty "
+        "  function body, or a `for` loop with no body). The action must "
+        "  actually appear in executable code.\n"
+        "- Match labels by intent, not exact wording. Labels are written in "
+        "  natural language; the code expresses the same idea in Python.\n\n"
+        "Respond with JSON only, no prose, in this exact shape:\n"
+        '{"completed_steps": ["<label>", "<label>"]}\n'
+        "Labels MUST be copied verbatim from the provided list."
+    )
+
+    user_prompt = (
+        "Flow steps (ordered):\n"
+        + "\n".join(f"- {label}" for label in flow_steps)
+        + "\n\nCandidate code:\n```python\n"
+        + code
+        + "\n```"
+    )
+
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=256,
+        )
+    except Exception as e:
+        raise StepGraderError(f"LLM call failed: {e}")
+
+    try:
+        raw = completion.choices[0].message.content or "{}"
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, AttributeError, IndexError) as e:
+        raise StepGraderError(f"Malformed LLM response: {e}")
+
+    completed = parsed.get("completed_steps", [])
+    if not isinstance(completed, list):
+        raise StepGraderError("LLM response missing 'completed_steps' list.")
+
+    allowed = set(flow_steps)
+    return [label for label in completed if isinstance(label, str) and label in allowed]

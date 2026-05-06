@@ -60,7 +60,11 @@ class Problem(Base):
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title         = Column(String(255), nullable=False)
     prompt        = Column(Text,        nullable=False)
-    difficulty    = Column(SAEnum(Difficulty), nullable=False, default=Difficulty.BEGINNER)
+    difficulty    = Column(
+        SAEnum(Difficulty, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=Difficulty.BEGINNER,
+    )
     topic         = Column(String(100))
     type          = Column(SAEnum(ProblemType), nullable=False)
     expected_flow = Column(JSONB)          # ordered step labels — FLOW_IMPL only
