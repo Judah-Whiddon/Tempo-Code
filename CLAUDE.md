@@ -198,13 +198,13 @@ Claude is acting as a **development assistant and software architecture mentor**
 - Backend Python venv lives at `backend/.venv` (deps installed from `requirements.txt`). Run the API via `& .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000` from `backend/`.
 - Frontend is built with SolidJS + Vite. Run via `npm run dev` from `frontend/` (Vite serves on :3000; CORS is configured for that origin). Routes: `/` (problem-type select) and `/problem/:id`. API client is `frontend/src/api.js`.
 - Frontend file layout: `src/pages/` (`ProblemTypeSelect.jsx`, `ProblemPage.jsx`, `FlowImplWorkspace.jsx`); `src/components/` (`FlowCanvas.jsx`, `ImplementationPanel.jsx`); empty scaffold dirs `CodeEditor/`, `Feedback/`, `FlowCanvas/`, `ProblemTypeSelector/` are leftovers — safe to delete.
-- `.env` is set with the correct DB password. `ANTHROPIC_API_KEY` is still a placeholder; only Mock Interview needs it (deferred from MVP).
-- **Resolved:** the Windows `python3` PATH bug in `grader.py` is fixed — line 129 now uses `[sys.executable, tmp_path]`, so IMPLEMENTATION and DEBUGGING grading work on Windows.
-- GitHub repo exists at https://github.com/Judah-Whiddon/Tempo-Code — nothing pushed yet.
+- `backend/.env` carries the bare-metal `DATABASE_URL` and `GROQ_API_KEY`. The root `.env` is for `docker compose` (real `GROQ_API_KEY` lives there too). Both are gitignored. Anthropic SDK is no longer a runtime dependency — `anthropic==0.25.0` in `requirements.txt` is dead weight and can be removed.
+- **Resolved:** the Windows `python3` PATH bug in `grader.py` is fixed — `[sys.executable, tmp_path]` is used for the subprocess invocation, so IMPLEMENTATION and DEBUGGING grading work on Windows.
+- GitHub repo at https://github.com/Judah-Whiddon/Tempo-Code — `master` is pushed through Sprint 3 Phase 9 (Mock Interview UI + Dockerize). Local commits beyond that get pushed manually with `git push`.
 - Assignment 3 PDF (`TempoCode_Project_Management.pdf`) is complete and in the project root.
 - **Sprint 2 provider decision:** Step-level greening uses **Groq + Llama 3.3 70B Versatile** (`llama-3.3-70b-versatile`). Initially started on `llama-3.1-8b-instant` but the 8B model reliably missed conditional-branch return steps and ignored explicit "no empty bodies" instructions; bumped to 70B during Phase 7 testing and it greens correctly across partial / mid / full code states. Groq's API is OpenAI-compatible, free tier, and fast enough for interactive use. `GROQ_API_KEY` is live and rotated in `.env`. Env vars: `STEP_GRADER_BASE_URL=https://api.groq.com/openai/v1`, `STEP_GRADER_MODEL=llama-3.3-70b-versatile`. Provider/model are intentionally env-configurable so switching to Ollama (local) or Anthropic later is a one-line change.
 
-*Last updated: 2026-05-04 (Sprint 2 Phases 6 + 7 complete — step greening live end-to-end on Llama 3.3 70B)*
+*Last updated: 2026-05-05 (Mock Interview UI shipped; Sprint 3 Phase 9 — Dockerize the stack — shipped end-to-end. `docker compose up` from a clean clone produces a working app on Windows. Phase 10 — public hosted demo — is the next queued effort.)*
 
 ---
 
@@ -339,3 +339,44 @@ The softened system prompt was kept (it doesn't hurt 70B and adds an example for
 - Rate limiting on `/grade/steps` (add when multiple users are active).
 - Per-step hint generation (AI currently classifies steps; generating targeted hints per incomplete step is a separate prompt and a separate feature).
 - CodeMirror editor (still deferred — `<textarea>` is fine through demo).
+
+---
+
+## Sprint 3 — Dockerize & Distribute
+
+**Goal:** Make TempoCode runnable by anyone with one command and pavable for a public hosted demo. Current "clone and run" requires installing Postgres 18, creating a Python venv, running two SQL scripts, npm-installing the frontend, setting env vars, running seed, and booting two servers — a non-trivial barrier for graders, classmates, or future contributors.
+
+**Why now:** The MVP + Sprint 2 are demoable but only on the author's machine. A presentation link beats a "git clone it" instruction every time, and Docker is the foundation that unlocks both reproducible local dev and most free-tier hosting platforms (Render, Railway, Fly).
+
+### Phase 9 — Dockerize the stack ✅ DONE (2026-05-05)
+
+- [x] `backend/Dockerfile` — `python:3.12-slim`, installs `requirements.txt`, runs uvicorn on `:8000`. Secrets read from env at runtime, never baked into the image.
+- [x] `frontend/Dockerfile` — `node:20-alpine`, `npm install`, runs `vite --host 0.0.0.0` on `:3000`. Dev mode (not multi-stage build → nginx) so source bind-mount + hot reload works in dev. Build-for-prod is a Phase 10 concern.
+- [x] `docker-compose.yml` — four services: `postgres` (Postgres 18, healthchecked), `seed` (one-shot, gates `backend` via `service_completed_successfully`), `backend`, `frontend`. Env vars sourced from root `.env`; nothing hardcoded.
+- [x] `database/schema.sql` mounted at `/docker-entrypoint-initdb.d/01-schema.sql:ro` for first-boot init. `seed.py` runs as the dedicated `seed` service.
+- [x] `.dockerignore` for both backend and frontend (`.venv`, `node_modules`, `__pycache__`, `.git`, etc.).
+- [x] Manual test: clean `docker compose up` on Windows produces a working app at `http://localhost:3000`. Verified `/health`, `/problems/`, `/grade/steps` all 200, full Two Sum flow + step greening end-to-end.
+- [x] `README.md` — comprehensive Docker quickstart added (prerequisites, one command, env setup, verification, troubleshooting).
+
+**Two gotchas hit during bring-up — both documented in the README troubleshooting section:**
+
+1. **PG18 volume path.** The image now stores data under `/var/lib/postgresql/<version>/docker` so the container expects the volume mount at `/var/lib/postgresql` (parent dir), not `/var/lib/postgresql/data`. Mounting at the old path makes Postgres bail with a "format compatibility" error pointing at [docker-library/postgres#1259](https://github.com/docker-library/postgres/pull/1259). Compose is correct; just `docker compose down -v` if you ever migrate from a pre-PG18 volume.
+2. **`docker compose restart` does NOT re-read `.env`.** It restarts the existing container with its baked-in env. To pick up a new `GROQ_API_KEY` (or any env change), use `docker compose up -d --force-recreate <service>` or `down && up`. This bit twice during bring-up — flagged prominently in README troubleshooting.
+
+### Phase 10 — Public hosted demo (optional, blocked on Phase 9)
+
+Pick one of:
+- **Render** — Postgres + two services (backend Docker, frontend static or Docker), free tier with cold starts. Easiest if Dockerfiles work.
+- **Railway** — similar to Render, slightly more generous free tier; Dockerfile-driven.
+- **Fly.io + Neon** — Fly for the apps, Neon for managed Postgres free tier. More setup, more durable.
+- **Vercel (frontend) + Render/Railway (backend) + Neon (DB)** — split-stack, each on the platform that does it best.
+
+Whatever the host: secrets (`GROQ_API_KEY`) go in the platform's secret manager, never in committed config. CORS in `main.py` will need the public frontend origin added.
+
+### Why not Codespaces / devcontainers
+Considered. Tradeoff is hours-limited and configuring three services in one container is fiddlier than docker-compose. Compose buys most of the same reproducibility with broader portability and is the on-ramp to hosting. If a contributor wants Codespaces later, the existing Dockerfiles + a thin `.devcontainer/` config make it trivial.
+
+### Out of scope for Sprint 3
+- Production-grade Postgres setup (backups, connection pooling, migrations) — not needed for a demo.
+- CI/CD pipeline — manual `git push` + platform auto-deploy is fine until the project has more contributors.
+- Auth (still deferred from MVP). Hosting a single-user demo with the placeholder UUID is acceptable; flagging it for the user in the README is enough.

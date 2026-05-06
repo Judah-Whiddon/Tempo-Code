@@ -1,0 +1,82 @@
+# TempoCode — full stack via docker compose.
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in GROQ_API_KEY (and optionally POSTGRES_PASSWORD).
+#   2. docker compose up
+#   3. Open http://localhost:3000
+#
+# Reset everything (drops the DB volume so schema + seed re-run):
+#   docker compose down -v && docker compose up
+#
+# Re-seed only (without dropping the DB):
+#   docker compose run --rm seed
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tempocode}
+      POSTGRES_DB: tempocode
+    volumes:
+      # Persistent data across `docker compose up` / `down` (but not `down -v`).
+      # Postgres 18+ expects the mount at /var/lib/postgresql (the parent dir),
+      # NOT /var/lib/postgresql/data — the image creates a major-version
+      # subdirectory inside so pg_upgrade --link can work cleanly.
+      # See: https://github.com/docker-library/postgres/pull/1259
+      - postgres_data:/var/lib/postgresql
+      # Auto-applied on first boot only (when data volume is empty).
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tempocode"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    ports:
+      # Exposed for psql/GUI tools on the host. Remove this line if you don't
+      # need to connect from outside the compose network.
+      - "5432:5432"
+
+  # One-shot job: seeds the placeholder user + Two Sum + Debugging + Mock Interview.
+  # Reuses the backend image, just runs `python seed.py` instead of uvicorn.
+  # `restart: no` so it doesn't loop after a successful exit.
+  seed:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-tempocode}@postgres:5432/tempocode
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "seed.py"]
+    restart: "no"
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-tempocode}@postgres:5432/tempocode
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      STEP_GRADER_BASE_URL: ${STEP_GRADER_BASE_URL:-https://api.groq.com/openai/v1}
+      STEP_GRADER_MODEL: ${STEP_GRADER_MODEL:-llama-3.3-70b-versatile}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    volumes:
+      # Bind-mount source for hot reload.
+      - ./frontend:/app
+      # Anonymous volume shadows the host's missing/stale node_modules so the
+      # container keeps the deps it installed at build time.
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
