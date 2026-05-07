@@ -5,7 +5,7 @@
 TempoCode is a minimalist coding practice platform inspired by Monkeytype, but focused on **programming fluency, program structure, and software modeling** — not typing speed. Users practice both *modeling* program logic and *implementing* it in code.
 
 **Target audience:** CS students and beginner-to-intermediate programmers.
-**Current status:** MVP complete. Sprint 2 in planning — step-level greening for Implementation Mode.
+**Current status:** MVP + Sprint 2 (step-level greening) + Sprint 3 Phase 9 (Dockerize) + **Sprint 4 — all phases (auth, profile, problem library)** all shipped. Problem library is at 8 problems (3 FLOW_IMPL, 4 DEBUGGING, 1 MOCK_INTERVIEW). Sprint 3 Phase 10 (public hosted demo) remains the next queued discretionary effort.
 
 ---
 
@@ -96,6 +96,19 @@ Three problem types accessible from a **Problem Type Selection window** before a
 - Implementation phase: code editor appears with minimized flow in corner → user writes code → test runner executes against TestCases → greens on pass.
 - Greening is the positive reinforcement signal at both phases.
 - Problems: canonical interview questions (two-sum, top-k frequent, anagrams, palindromes).
+
+#### Flow Step Label Convention (canonical, applies to every new FLOW_IMPL problem)
+
+`flow_steps.label` is what the Llama 3.3 70B step grader compares the user's code against. Vague labels misclassify partial code. Established in Sprint 4 Phase 13 (originally deferred from Phase 8) and validated against Valid Anagram (greens cleanly 0/5 → 2/5 → 5/5).
+
+Labels must be **concrete and code-descriptive** — they should read like a comment a developer might leave next to the line they describe:
+
+1. **Real-looking variable names.** `Initialize seen = {} hash map` — not `Set up storage`.
+2. **Loops: name the iteration variable AND what's being processed.** `Loop through each (i, num) in enumerate(nums)` — not `Loop through`.
+3. **Conditionals / returns: name what's checked AND what's returned.** `If complement is in seen, return [seen[complement], i]` — not `Return the indices`.
+4. **Initialization: name the structure.** `Initialize left = 0 and right = len(s) - 1` — not `Set up pointers`.
+
+Two Sum's labels predate this convention and aren't rewritten — leaving them alone (the only known artefact is empty-`for`-loop bodies being credited as the Loop step, which is a label-sharpness issue, not a functional one). Anagram and Reverse a String follow the convention; subsequent additions should too.
 
 ### Type 2 — Debugging
 - Broken code presented in editor as `starter_code`.
@@ -194,7 +207,10 @@ Claude is acting as a **development assistant and software architecture mentor**
 - All architecture decisions, problem types, grading layer, and class structure are finalized — see sections above.
 - Backend is **fully scaffolded, seeded, and verified end-to-end**: FastAPI app, SQLAlchemy models, grader service (flow comparison, subprocess code runner, AI mock interview), Pydantic schemas, DB connection, routes for `/problems` and `/submissions`.
 - Database schema is live on PostgreSQL 18 (localhost:5432, db `tempocode`). The integer-keyed `users` table has been dropped and re-created with UUID. `database/teardown.sql` is the canonical reset script — run it then re-apply `database/schema.sql` if you need a clean slate.
-- `backend/seed.py` inserts a placeholder user + Two Sum (FLOW_IMPL) + Find Max — Off By One (DEBUGGING). Idempotent — safe to re-run.
+- `backend/seed.py` inserts the **demo user** (UUID `00000000-0000-0000-0000-000000000001`, `username='demo'`) + Two Sum (FLOW_IMPL) + Find Max — Off By One (DEBUGGING) + Mock Interview problem. Idempotent w.r.t. the demo user, but note the cascade reach below.
+- **Re-running `seed.py` wipes ALL submissions, not just demo's.** The seed does `db.query(Problem).delete()` first, which CASCADEs through `submissions.problem_id`. Real-account user *rows* survive (only the demo user row gets deleted-and-reinserted), but every submission FK'd to a seeded problem is gone. Pre-existing seed contract; flag if/when it bites. Fix path: switch `seed.py` to upsert problems instead of delete+insert.
+- **Sprint 4 Phase 11 (Auth)** — username + password auth is wired up end-to-end. Sign up at `/signup`, log in at `/login`. Tokens are HS256 JWTs (7-day expiry), stored in `localStorage`, sent as `Authorization: Bearer …`. `JWT_SECRET` env var is required (compose fails loud via `${JWT_SECRET:?…}`). bcrypt is **pinned to `4.0.1`** because passlib 1.7.4's startup probe sends a >72-byte password that bcrypt ≥4.1 rejects instead of truncating — `requirements.txt` carries a comment. **Auth is opt-in, never a wall:** `/submissions/` accepts anonymous requests via `get_current_user_optional`, falling back to the demo UUID. Only `/auth/me` (and the upcoming `/profile/me`) require a token. The frontend has no `RequireAuth` route guard; `api.js` clears bad tokens on 401 but does NOT redirect.
+- **Pre-existing model bug found while smoke-testing auth:** `User.submissions` and `User.progress` SQLAlchemy relationships lack `passive_deletes=True`, so `db.delete(user)` via the ORM tries to NULL the FKs (which are NOT NULL) instead of deferring to the DB-level `ON DELETE CASCADE`. Bulk delete (`db.query(User).filter(...).delete()`, what `seed.py` uses) sidesteps the ORM and works. Not blocking — no UI deletes users — but Phase 12+ should add `passive_deletes=True` if it ever needs ORM-level user deletion.
 - Backend Python venv lives at `backend/.venv` (deps installed from `requirements.txt`). Run the API via `& .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000` from `backend/`.
 - Frontend is built with SolidJS + Vite. Run via `npm run dev` from `frontend/` (Vite serves on :3000; CORS is configured for that origin). Routes: `/` (problem-type select) and `/problem/:id`. API client is `frontend/src/api.js`.
 - Frontend file layout: `src/pages/` (`ProblemTypeSelect.jsx`, `ProblemPage.jsx`, `FlowImplWorkspace.jsx`); `src/components/` (`FlowCanvas.jsx`, `ImplementationPanel.jsx`); empty scaffold dirs `CodeEditor/`, `Feedback/`, `FlowCanvas/`, `ProblemTypeSelector/` are leftovers — safe to delete.
@@ -204,7 +220,7 @@ Claude is acting as a **development assistant and software architecture mentor**
 - Assignment 3 PDF (`TempoCode_Project_Management.pdf`) is complete and in the project root.
 - **Sprint 2 provider decision:** Step-level greening uses **Groq + Llama 3.3 70B Versatile** (`llama-3.3-70b-versatile`). Initially started on `llama-3.1-8b-instant` but the 8B model reliably missed conditional-branch return steps and ignored explicit "no empty bodies" instructions; bumped to 70B during Phase 7 testing and it greens correctly across partial / mid / full code states. Groq's API is OpenAI-compatible, free tier, and fast enough for interactive use. `GROQ_API_KEY` is live and rotated in `.env`. Env vars: `STEP_GRADER_BASE_URL=https://api.groq.com/openai/v1`, `STEP_GRADER_MODEL=llama-3.3-70b-versatile`. Provider/model are intentionally env-configurable so switching to Ollama (local) or Anthropic later is a one-line change.
 
-*Last updated: 2026-05-05 (Mock Interview UI shipped; Sprint 3 Phase 9 — Dockerize the stack — shipped end-to-end. `docker compose up` from a clean clone produces a working app on Windows. Phase 10 — public hosted demo — is the next queued effort.)*
+*Last updated: 2026-05-06 (Sprint 4 closed end-to-end: Phase 11 minimal auth + Phase 12 profile page + Phase 13 library expansion all shipped and verified. Auth is opt-in, never a wall. Problem library at 8 problems, with the code-descriptive Flow Step Label Convention now canonical. Sprint 3 Phase 10 — public hosted demo — is the next queued discretionary effort.)*
 
 ---
 
@@ -256,7 +272,7 @@ All five phases of the MVP sprint are complete. The platform supports the two co
 - [x] Pass/fail verdict display reuses the Implementation panel's verdict UI.
 
 ### Deferred (not in MVP)
-- Authentication (placeholder user `00000000-0000-0000-0000-000000000001` is hardcoded in submissions.py — fine for now)
+- ~~Authentication~~ — shipped in Sprint 4 Phase 11. Demo UUID `00000000-…-001` is now the anonymous fallback in `submissions.py`, not a hardcoded user identity.
 - Mock Interview UI (backend is ready; add this last)
 - WebSockets
 - Styling beyond functional
@@ -379,4 +395,113 @@ Considered. Tradeoff is hours-limited and configuring three services in one cont
 ### Out of scope for Sprint 3
 - Production-grade Postgres setup (backups, connection pooling, migrations) — not needed for a demo.
 - CI/CD pipeline — manual `git push` + platform auto-deploy is fine until the project has more contributors.
-- Auth (still deferred from MVP). Hosting a single-user demo with the placeholder UUID is acceptable; flagging it for the user in the README is enough.
+- Auth (still deferred from MVP at the time of Sprint 3; landed in Sprint 4 Phase 11. The hosted-demo plan still works — the demo UUID just becomes the anonymous-submission bucket instead of the only identity).
+
+---
+
+## Sprint 4 — Final Stretch (Auth + Profile + Problems)
+
+**Goal:** Ship minimal auth, a profile page, and a small problem-library expansion before final submission.
+
+**Status:** Sprint 4 closed. All three phases shipped (11 — auth, 12 — profile, 13 — library). Findings folded inline below; the original plan file is preserved at `archive/sprint-4-plan.md` for reference (its contents live here now).
+
+### Phase 11 — Minimal Auth ✅ DONE (2026-05-06)
+
+**Goal:** Sign up + log in + identify the current user, without becoming an obstacle to the practice loop.
+
+**Locked decisions (from `archive/sprint-4-plan.md`):**
+- Username + password only — no email verification, no password reset, no OAuth.
+- bcrypt via `passlib[bcrypt]` for hashing.
+- JWT (HS256, 7-day expiry, signed with `JWT_SECRET`), stored in `localStorage`, sent as `Authorization: Bearer …`. XSS-exposed but fits the existing CORS shape with no surgery; no real users on this demo to protect.
+- `pyjwt` (lighter than python-jose).
+
+**Backend:**
+- [x] New `backend/app/security.py` — `hash_password`, `verify_password`, `create_access_token`, `decode_access_token`, FastAPI deps `get_current_user` (strict, 401s on missing/invalid) and `get_current_user_optional` (returns `None` instead of raising).
+- [x] New `backend/app/schemas/auth.py` — `SignupRequest`, `LoginRequest`, `UserResponse`, `AuthResponse`. Username is required; email is **synthesized server-side** as `<username>@tempocode.local` because the `users` table still requires `email NOT NULL UNIQUE` and the spec is username-only.
+- [x] New `backend/app/routes/auth.py` — `POST /auth/signup` (409 on dup), `POST /auth/login` (one generic 401 on bad creds — no enumeration leak), `GET /auth/me`. Registered in `main.py`.
+- [x] `backend/app/routes/submissions.py` — switched from a hardcoded placeholder UUID to `Depends(get_current_user_optional)`. Anonymous submissions attach to `ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000001'` (the demo user). Authed submissions attach to the real user.
+- [x] `JWT_SECRET` added to root `.env`, `.env.example`, `backend/.env`, `backend/.env.example`, and `docker-compose.yml` backend env block (with `${JWT_SECRET:?…}` so compose fails loud if missing).
+
+**Frontend:**
+- [x] New `frontend/src/auth.js` — `getToken / setToken / clearToken` over `localStorage`, key `tempocode_token`.
+- [x] `frontend/src/api.js` — auto-attaches `Authorization` header when a token exists; on 401 just clears the bad token (no auto-redirect, see design pivot below); new `signup` / `login` / `me` methods. `signup`/`login` use `auth: "skip"` so a stale token can't poison those calls.
+- [x] New `frontend/src/AuthContext.jsx` — Solid context with `currentUser` signal. On mount, if a token exists, calls `me()` to hydrate. Exposes `login`, `signup`, `logout`. Source of truth for "who is the user" is always the server (`me()`), not JWT claim decoding.
+- [x] New `frontend/src/pages/Login.jsx` and `frontend/src/pages/Signup.jsx` — username+password forms, inline error on bad creds / duplicate username, cross-link.
+- [x] `frontend/src/App.jsx` — wrapped in `<AuthProvider>`, public routes `/login` and `/signup`. (No `RequireAuth` guard — see pivot.)
+- [x] `frontend/src/pages/ProblemTypeSelect.jsx` — topbar shows "Logged in as <username>" + Logout when authed, "Log in / Sign up" links when not.
+- [x] CSS for auth forms, topbar, user pill in `index.css`.
+
+**Migration:**
+- [x] `database/migrations/004_demo_user.sql` — `UPDATE users SET username='demo', email='demo@tempocode.local' WHERE id='00000000-…-001'`. Applied.
+- [x] `seed.py` updated: `PLACEHOLDER_USER_ID` → `DEMO_USER_ID`, insert literals updated to `'demo'` / `'demo@tempocode.local'`. Re-running seed stays idempotent against the rename.
+
+**Design pivot during the phase — auth is opt-in, never a wall:**
+
+The original plan called for a `RequireAuth` guard around `/problem/:id` redirecting to `/login` when no token exists. Mid-phase, the user explicitly pivoted: **the site's full functionality must work without an account.** Login exists only to enable per-user progress tracking on the (upcoming) profile page.
+
+Concrete changes from that pivot:
+- Backend uses `get_current_user_optional` for `/submissions/` instead of strict auth.
+- Frontend has no route guard; every page is publicly reachable.
+- `api.js` no longer hard-redirects to `/login` on 401 — it just clears the token and lets the caller handle the failure. (Strict endpoints like `/auth/me` still 401, but the only caller is `AuthContext` mount-time hydration, which catches and continues anonymously.)
+
+This is recorded in user-memory and applies to all future feature work: when adding anything new, ask "does a logged-out visitor get the full experience?" — if no, redesign.
+
+**Findings worth keeping:**
+
+1. **bcrypt pinned to 4.0.1.** passlib 1.7.4's startup probe sends a >72-byte password; bcrypt ≥4.1 rejects it instead of truncating, crashing the first hash call. 4.0.1 is the last version compatible with passlib 1.7.4. `requirements.txt` carries a comment explaining the pin. Don't bump bcrypt without re-testing `/auth/signup`.
+
+2. **Pre-existing model bug — User cascade.** `User.submissions` and `User.progress` SQLAlchemy relationships lack `passive_deletes=True`, so `db.delete(user)` via the ORM tries to NULL the FKs (which are NOT NULL). Bulk delete bypasses the ORM and works. Cleanup scripts during smoke testing had to use raw SQL `DELETE FROM users …`. Not Phase 11 scope, but Phase 12+ should fix if it ever needs ORM-level user deletion.
+
+3. **Pre-existing seed.py cascade reach.** `seed.py` does `db.query(Problem).delete()` first, which CASCADEs through `submissions.problem_id`. Real-account user *rows* survive a re-seed, but every submission FK'd to a seeded problem is wiped. The seed docstring says "wipes fixture rows and reinserts a known set" but the cascade is broader than that suggests. Acceptable for a demo — flag if it ever bites a real-user scenario.
+
+### Phase 12 — Profile Page ✅ DONE (2026-05-06)
+
+**Goal:** Per-user practice stats — completed-problem counts by type + per-problem attempts/accuracy/completed flag. Streak metric was scoped out (would need a daily-activity rollup; deferred entirely).
+
+**Backend:**
+- [x] New `backend/app/schemas/profile.py` — `ProfileResponse` (`username`, `problems_completed_by_type: Dict[str,int]`, `per_problem_stats: List[PerProblemStat]`) and `PerProblemStat`. Shape is stable for empty users: `problems_completed_by_type` always carries every `ProblemType` enum value pre-filled with 0, so the frontend never needs conditional rendering for missing keys.
+- [x] New `backend/app/routes/profile.py` — `GET /profile/me`, strict auth via `Depends(get_current_user)`. Two queries:
+  - **Completed-by-type:** `Progress` ⨝ `Problem` filtered to `Progress.user_id == current_user.id` AND `completed_at IS NOT NULL`, grouped by `Problem.type`. Pre-fill all enum values with 0 first, then overwrite with query results.
+  - **Per-problem:** `Submission` ⨝ `Problem` grouped by `Problem.id, .title, .type` with `COUNT(*)` for attempts and `COALESCE(SUM(CASE WHEN is_correct THEN 1 ELSE 0 END), 0)` for successes. Progress LEFT-loaded into a Python-side dict (`problem_id → completed_at is not None`) for the `completed` flag — simpler than a SQL LEFT JOIN with the GROUP BY. Accuracy computed Python-side after the query (defensive against zero-attempts edge cases even though the JOIN guarantees ≥1 row).
+- [x] Registered in `main.py`.
+
+**Frontend:**
+- [x] `api.js` — `getProfile()`.
+- [x] New `frontend/src/pages/Profile.jsx` — four states via `<Switch>`: logged-out stub (per the auth pivot — no redirect, just a "Sign in to see your profile" + login/signup links), `profile.loading`, `profile.error`, populated. `createResource` keyed off `currentUser()?.id` so it skips the fetch entirely when anonymous. Body has the completed-by-type cards (one per `ProblemType` enum value) and a per-problem table with a "Done" / "In progress" badge. Empty submissions show "No submissions yet — try a problem from the home page".
+- [x] `App.jsx` — `/profile` is a public route (no `RequireAuth` — page handles logged-out internally per the auth pivot).
+- [x] `ProblemTypeSelect.jsx` — Profile link added to the topbar when authenticated.
+- [x] `index.css` — completed-grid cards, profile table, "Done" / "In progress" badges, logged-out stub.
+
+**Verified end-to-end via API:**
+- `/profile/me` no token → 401 (strict by design — frontend handles via empty-state stub, never redirects)
+- Brand-new user `profile_new` → empty state with shape-stable zeros and zero per-problem rows
+- After 3 submissions on Two Sum (1 fail flow + 1 pass flow + 1 pass impl): `FLOW_IMPL=1`, 1 row with `attempts=3 successes=2 accuracy=0.6667 completed=true`
+- Cross-account isolation: `browser_test` and `profile_new` see only their own data.
+
+**Pivot from plan:** the plan called for `/profile` to be guarded with redirect-to-login when anonymous. Since auth is opt-in (Phase 11 design pivot), `/profile` is now public and the page itself renders a "Sign in to see your profile" stub. Same UX outcome (anonymous users get a clear path to sign up), no `<Navigate>` involved.
+
+### Phase 13 — Problem Library Expansion ✅ DONE (2026-05-06)
+
+**Goal:** Five new problems, no schema or code changes outside `seed.py`. Apply the deferred Phase 8 label convention to the new FLOW_IMPL problems so the step grader can classify partial code reliably.
+
+- [x] **FLOW_IMPL: Valid Anagram** — 5 flow steps (`char_count = {}` init, two loops increment/decrement, conditional false return, true return) following the code-descriptive convention. 4 test cases covering normal, mismatch, empty, and length-mismatch. `solve(s, t) -> bool`.
+- [x] **FLOW_IMPL: Reverse a String** — 4 flow steps using a two-pointer pattern (`left=0, right=len(s)-1`, swap, increment/decrement, return). 3 test cases including the empty-list edge. `solve(s) -> list[str]`. Modifies in place AND returns the same list (grader compares the return value).
+- [x] **DEBUGGING: Sum List Elements** — `range(len(nums) + 1)` IndexError. 4 test cases including `[]` (empty trips it too because `range(1)` enters the loop body once and indexes `nums[0]`).
+- [x] **DEBUGGING: Get User Email** — `user["email"]` KeyError. 4 test cases mixing dicts that have `"email"` and dicts that don't. Fix is `user.get("email")`. `None` round-trips correctly through the JSON test runner.
+- [x] **DEBUGGING: Calculate Average** — `sum(nums) / len(nums)` ZeroDivisionError on `[]`. 4 test cases. Fix is an explicit empty guard returning `0`.
+- [x] `seed.py` extended; re-seed stays idempotent under the existing wipe-and-reinsert contract. Total problems: **3 → 8** (3 FLOW_IMPL, 4 DEBUGGING, 1 MOCK_INTERVIEW).
+
+**Acceptance verified via the live grader:**
+- All 8 problems load via `GET /problems/`.
+- Both new FLOW_IMPL canonical solutions → PASS.
+- Each DEBUGGING starter → FAIL (each crashes on the targeted exception class; the verdict shows 0–3 of N tests passed depending on which inputs trip the bug). Each fix → PASS on all tests.
+- Step greening on Valid Anagram (Llama 3.3 70B): **0/5 empty → 2/5 partial (init + first loop) → 5/5 full solution**. Progressive signal works on the new labels — the code-descriptive convention pays off.
+
+**Code-descriptive label convention is documented up top (see "Flow Step Label Convention" in the Problem Types section)** and should be applied to any future FLOW_IMPL problem.
+
+### Out of scope for Sprint 4 (intentionally cut)
+- Streak metric (deferred from Phase 12 — pickup if budget allows).
+- Recent activity feed.
+- Email verification, password reset, OAuth.
+- Per-attempt `greened_steps` history on the profile (current `feedback` only holds the latest).
+- Token rotation / refresh / revocation.

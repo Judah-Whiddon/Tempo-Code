@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { A, useNavigate } from "@solidjs/router";
 import { getProblems } from "../api";
+import { useAuth } from "../AuthContext";
 
 const TYPES = [
   {
@@ -22,6 +23,7 @@ const TYPES = [
 
 function ProblemTypeSelect() {
   const navigate = useNavigate();
+  const { currentUser, logout } = useAuth();
   const [loading, setLoading] = createSignal(null); // type currently being fetched
   const [error, setError] = createSignal("");
 
@@ -45,6 +47,22 @@ function ProblemTypeSelect() {
 
   return (
     <main class="container">
+      <nav class="topbar">
+        <Show
+          when={currentUser()}
+          fallback={
+            <div class="auth-links">
+              <A href="/login">Log in</A>
+              <A href="/signup" class="primary-link">Sign up</A>
+            </div>
+          }
+        >
+          <span class="user-pill">Logged in as <strong>{currentUser().username}</strong></span>
+          <A href="/profile" class="profile-link">Profile</A>
+          <button class="ghost" onClick={logout}>Log out</button>
+        </Show>
+      </nav>
+
       <header class="hero">
         <h1>TempoCode</h1>
         <p class="tagline">Practice programming fluency. Pick a mode.</p>

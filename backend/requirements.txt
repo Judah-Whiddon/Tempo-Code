@@ -6,3 +6,9 @@ python-dotenv==1.0.1
 pydantic[email]==2.7.1
 anthropic==0.25.0
 openai==1.59.9
+passlib[bcrypt]==1.7.4
+# bcrypt pinned: passlib 1.7.4's startup probe sends a >72-byte password which
+# bcrypt >=4.1 rejects with ValueError instead of truncating. 4.0.1 is the last
+# version compatible with passlib 1.7.4. Don't bump without testing /auth/signup.
+bcrypt==4.0.1
+pyjwt==2.10.1
