@@ -1,33 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from datetime import datetime
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
 from app.db.database import get_db
-from app.models.models import Submission, Feedback, Progress, Problem, Phase
+from app.models.models import Submission, Feedback, Progress, Problem, Phase, User
 from app.schemas.schemas import SubmissionIn, SubmissionOut
+from app.security import get_current_user_optional
 from app.services.grader import grade_submission
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
+# Anonymous (logged-out) submissions attach to this row. Created by seed.py;
+# kept around so the FK constraint is satisfied without forcing login.
+ANONYMOUS_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+
 
 @router.post("/", response_model=SubmissionOut)
-def submit(payload: SubmissionIn, db: Session = Depends(get_db)):
+def submit(
+    payload: SubmissionIn,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+):
     """
-    Accept a submission from the frontend.
-    Routes to the correct grader based on problem type and phase.
-    Returns a Feedback record with verdict and optional hint.
-
-    NOTE: user_id is hardcoded as a placeholder until auth is wired up.
+    Accept a submission. Authentication is optional — anonymous submissions
+    attach to the placeholder/demo user so the practice loop works without
+    login. Logged-in submissions attach to the real user for profile tracking.
     """
     problem = db.query(Problem).filter(Problem.id == payload.problem_id).first()
     if not problem:
         raise HTTPException(status_code=404, detail="Problem not found")
 
-    # TODO: replace with real user_id from JWT token once auth is implemented
-    PLACEHOLDER_USER_ID = "00000000-0000-0000-0000-000000000001"
+    user_id = current_user.id if current_user else ANONYMOUS_USER_ID
 
     submission = Submission(
-        user_id    = PLACEHOLDER_USER_ID,
+        user_id    = user_id,
         problem_id = payload.problem_id,
         phase      = payload.phase,
         content    = payload.content,
@@ -56,13 +64,13 @@ def submit(payload: SubmissionIn, db: Session = Depends(get_db)):
 
     # Update progress — unlock implementation phase if flow is greened
     progress = db.query(Progress).filter_by(
-        user_id=PLACEHOLDER_USER_ID,
-        problem_id=payload.problem_id
+        user_id=user_id,
+        problem_id=payload.problem_id,
     ).first()
 
     if not progress:
         progress = Progress(
-            user_id        = PLACEHOLDER_USER_ID,
+            user_id        = user_id,
             problem_id     = payload.problem_id,
             flow_completed = False,
             impl_unlocked  = False,
@@ -77,7 +85,6 @@ def submit(payload: SubmissionIn, db: Session = Depends(get_db)):
         progress.impl_unlocked  = True
 
     if payload.phase in (Phase.IMPLEMENTATION, Phase.DEBUGGING, Phase.MOCK_INTERVIEW) and verdict == "pass":
-        from datetime import datetime
         progress.completed_at = datetime.utcnow()
 
     db.commit()
